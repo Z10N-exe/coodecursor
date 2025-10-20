@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm run start:prod
+    healthCheckPath: /api
     envVars:
       - key: NODE_ENV
         value: production
@@ -18,7 +19,13 @@ services:
         value: https://aspire-trade-frontend.onrender.com
       - key: ADMIN_URL
         value: https://aspire-trade-admin.onrender.com
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: PORT
+        value: 3001
 
 databases:
   - name: aspire-trade-db
     plan: free
+    databaseName: aspire_trade
+    user: aspire_user

@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsString, IsNumberString, IsOptional, IsEnum } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { AdminAuthMiddleware } from './admin-auth.middleware';
 
 class AdjustBalanceDto {
   @IsNumberString()
@@ -27,7 +27,6 @@ class ApproveWithdrawalDto {
 }
 
 @Controller('admin')
-@UseGuards(AuthGuard('jwt'))
 export class AdminController {
   constructor(private prisma: PrismaService) {}
 
@@ -36,19 +35,43 @@ export class AdminController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Query('status') status?: string,
   ) {
     const pageNum = parseInt(page || '1');
     const limitNum = parseInt(limit || '20');
     const skip = (pageNum - 1) * limitNum;
 
-    const where = search ? {
-      OR: [
+    let where: any = {};
+    
+    if (search) {
+      where.OR = [
         { firstName: { contains: search, mode: 'insensitive' as const } },
         { lastName: { contains: search, mode: 'insensitive' as const } },
         { email: { contains: search, mode: 'insensitive' as const } },
         { phoneE164: { contains: search } },
-      ],
-    } : {};
+      ];
+    }
+
+    if (status) {
+      if (status === 'frozen') {
+        where.isFrozen = true;
+      } else if (status === 'active') {
+        where.isFrozen = false;
+      } else if (status === 'kyc_pending') {
+        where.kycStatus = 'pending';
+      } else if (status === 'kyc_approved') {
+        where.kycStatus = 'passed';
+      }
+    }
+
+    const orderBy: any = {};
+    if (sortBy) {
+      orderBy[sortBy] = sortOrder || 'desc';
+    } else {
+      orderBy.createdAt = 'desc';
+    }
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -65,8 +88,16 @@ export class AdminController {
           kycStatus: true,
           isFrozen: true,
           createdAt: true,
+          balances: {
+            select: {
+              currency: true,
+              available: true,
+              trading: true,
+              locked: true,
+            },
+          },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -104,6 +135,115 @@ export class AdminController {
     }
 
     return user;
+  }
+
+  @Post('users/:id/freeze')
+  async freezeAccount(@Param('id') userId: string, @Body() body: { reason: string }, @Req() req: any) {
+    const adminId = req.user.userId;
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { isFrozen: true },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          adminId,
+          actionType: 'freeze_account',
+          targetType: 'user',
+          targetId: userId,
+          reason: body.reason,
+          metadata: { userId, action: 'freeze' },
+        } as any,
+      });
+
+      return user;
+    });
+  }
+
+  @Post('users/:id/unfreeze')
+  async unfreezeAccount(@Param('id') userId: string, @Body() body: { reason: string }, @Req() req: any) {
+    const adminId = req.user.userId;
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { isFrozen: false },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          adminId,
+          actionType: 'unfreeze_account',
+          targetType: 'user',
+          targetId: userId,
+          reason: body.reason,
+          metadata: { userId, action: 'unfreeze' },
+        } as any,
+      });
+
+      return user;
+    });
+  }
+
+  @Post('users/:id/reset-password')
+  async resetPassword(@Param('id') userId: string, @Body() body: { newPassword: string, reason: string }, @Req() req: any) {
+    const adminId = req.user.userId;
+    const bcrypt = require('bcrypt');
+
+    return this.prisma.$transaction(async (tx) => {
+      const passwordHash = await bcrypt.hash(body.newPassword, 12);
+      
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          adminId,
+          actionType: 'reset_password',
+          targetType: 'user',
+          targetId: userId,
+          reason: body.reason,
+          metadata: { userId, action: 'password_reset' },
+        } as any,
+      });
+
+      return { message: 'Password reset successfully' };
+    });
+  }
+
+  @Post('users/:id/impersonate')
+  async impersonateUser(@Param('id') userId: string, @Body() body: { reason: string }, @Req() req: any) {
+    const adminId = req.user.userId;
+
+    // Create audit log for impersonation
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        actionType: 'impersonate_user',
+        targetType: 'user',
+        targetId: userId,
+        reason: body.reason,
+        metadata: { 
+          userId, 
+          adminId,
+          action: 'impersonate',
+          timestamp: new Date().toISOString()
+        },
+      } as any,
+    });
+
+    // Generate a special impersonation token
+    const impersonationToken = `impersonate_${userId}_${Date.now()}`;
+    
+    return { 
+      impersonationToken,
+      message: 'Impersonation token generated. Use this to access user dashboard.',
+      userId 
+    };
   }
 
   @Post('users/:id/adjust-balance')

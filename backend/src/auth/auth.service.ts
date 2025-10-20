@@ -30,7 +30,7 @@ export class AuthService {
         isAdult: payload.isAdult,
       },
     });
-    return { message: 'Verification required' };
+    return { message: 'Account created successfully' };
   }
 
   async validateUser(identifier: string, password: string) {
