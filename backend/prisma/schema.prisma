@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String    @id @default(uuid())
+  firstName        String
+  lastName         String
+  email            String?   @unique
+  phoneE164        String?   @unique
+  countryCode      String
+  passwordHash     String
+  isEmailVerified  Boolean   @default(false)
+  isPhoneVerified  Boolean   @default(false)
+  isAdult          Boolean
+  kycStatus        String    @default("pending")
+  isFrozen         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  balances         Balance[]
+  transactions     Transaction[]
+  withdrawals      WithdrawalRequest[]
+  sessions         Session[]
+  kycDocuments     KycDocument[]
+  emailVerifications EmailVerification[]
+}
+
+model Balance {
+  id        String   @id @default(uuid())
+  userId    String
+  currency  String
+  available Decimal  @default(0)
+  trading   Decimal  @default(0)
+  locked    Decimal  @default(0)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, currency])
+}
+
+model Transaction {
+  id                 String    @id @default(uuid())
+  userId             String
+  type               String
+  amount             Decimal
+  currency           String
+  status             String
+  reference          String?   @unique
+  createdByAdminId   String?
+  metadata           Json
+  createdAt          DateTime  @default(now())
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WithdrawalRequest {
+  id          String    @id @default(uuid())
+  userId      String
+  amount      Decimal
+  currency    String
+  method      String
+  details     Json
+  status      String    @default("requested")
+  adminId     String?
+  adminNote   String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminUser {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  role          String
+  passwordHash  String
+  twoFaEnabled  Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  actionType String
+  targetType String
+  targetId   String
+  reason     String
+  metadata   Json
+  createdAt  DateTime @default(now())
+}
+
+model Session {
+  id                 String   @id @default(uuid())
+  userId             String
+  refreshTokenHash   String
+  userAgent          String?
+  ip                 String?
+  createdAt          DateTime @default(now())
+  expiresAt          DateTime
+  revokedAt          DateTime?
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  type      String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KycDocument {
+  id                 String   @id @default(uuid())
+  userId             String
+  type               String
+  storageKey         String
+  status             String   @default("uploaded")
+  notes              String?
+  createdAt          DateTime @default(now())
+  reviewedAt         DateTime?
+  reviewedByAdminId  String?
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

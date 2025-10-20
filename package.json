@@ -1,0 +1,24 @@
+﻿{
+  "name": "aspire-secure-trade",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "admin", 
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:admin": "npm --workspace admin run dev",
+    "dev:backend": "npm --workspace backend run start:dev",
+    "build:frontend": "npm --workspace frontend run build",
+    "build:admin": "npm --workspace admin run build",
+    "build:backend": "npm --workspace backend run build",
+    "dev": "concurrently -n frontend,admin,backend -c blue,green,yellow \"npm run dev:frontend\" \"npm run dev:admin\" \"npm run dev:backend\"",
+    "dev:web": "concurrently -n frontend,backend -c blue,green \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:admin-panel": "concurrently -n admin,backend -c green,yellow \"npm run dev:admin\" \"npm run dev:backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

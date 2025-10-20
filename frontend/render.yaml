@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: aspire-trade-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: .next
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE
+        value: https://aspire-trade-backend.onrender.com/api
