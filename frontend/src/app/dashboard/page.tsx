@@ -14,18 +14,33 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawalAmount, setWithdrawalAmount] = useState("");
+  const [isImpersonated, setIsImpersonated] = useState(false);
+  const [impersonationInfo, setImpersonationInfo] = useState<any>(null);
   const authService = AuthService.getInstance();
 
   useEffect(() => {
-    if (!authService.isAuthenticated()) {
+    // Check for impersonation
+    const urlParams = new URLSearchParams(window.location.search);
+    const impersonateToken = urlParams.get('impersonate');
+    
+    if (impersonateToken) {
+      setIsImpersonated(true);
+      setImpersonationInfo({
+        token: impersonateToken,
+        adminName: 'Admin User', // In real app, get from token
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (!authService.isAuthenticated() && !impersonateToken) {
       router.replace("/login");
       return;
     }
 
     fetchUserData();
     
-    // Set up real-time updates every 30 seconds
-    const interval = setInterval(fetchUserData, 30000);
+    // Set up real-time updates every 5 seconds for better responsiveness
+    const interval = setInterval(fetchUserData, 5000);
     return () => clearInterval(interval);
   }, [router]);
 
@@ -58,11 +73,12 @@ export default function DashboardPage() {
         }),
       });
 
-      if (response.ok) {
-        alert('Deposit request created successfully');
-        setDepositAmount("");
-        fetchUserData(); // Refresh data
-      } else {
+          if (response.ok) {
+            alert('Deposit request created successfully');
+            setDepositAmount("");
+            // Immediate refresh for real-time updates
+            setTimeout(fetchUserData, 1000);
+          } else {
         const error = await response.json();
         alert('Deposit failed: ' + (error.message || 'Unknown error'));
       }
@@ -87,11 +103,12 @@ export default function DashboardPage() {
         }),
       });
 
-      if (response.ok) {
-        alert('Withdrawal request submitted for approval');
-        setWithdrawalAmount("");
-        fetchUserData(); // Refresh data
-      } else {
+          if (response.ok) {
+            alert('Withdrawal request submitted for approval');
+            setWithdrawalAmount("");
+            // Immediate refresh for real-time updates
+            setTimeout(fetchUserData, 1000);
+          } else {
         const error = await response.json();
         alert('Withdrawal failed: ' + (error.message || 'Unknown error'));
       }
@@ -129,6 +146,25 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {isImpersonated && (
+          <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-yellow-300 font-semibold">Admin Mode — You are logged in as {user?.firstName} {user?.lastName}</h3>
+                <p className="text-yellow-200 text-sm">Actions will be logged. Admin: {impersonationInfo?.adminName}</p>
+              </div>
+              <button
+                onClick={() => {
+                  window.close();
+                }}
+                className="text-yellow-300 hover:text-yellow-200 text-sm underline"
+              >
+                Close Impersonation
+              </button>
+            </div>
+          </div>
+        )}
+        
         {/* Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="glass rounded-2xl p-6">

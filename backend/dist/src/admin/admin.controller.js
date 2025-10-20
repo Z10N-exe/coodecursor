@@ -14,7 +14,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
 const common_1 = require("@nestjs/common");
-const passport_1 = require("@nestjs/passport");
 const class_validator_1 = require("class-validator");
 const prisma_service_1 = require("../prisma/prisma.service");
 const client_1 = require("@prisma/client");
@@ -57,18 +56,40 @@ let AdminController = class AdminController {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async getUsers(search, page, limit) {
+    async getUsers(search, page, limit, sortBy, sortOrder, status) {
         const pageNum = parseInt(page || '1');
         const limitNum = parseInt(limit || '20');
         const skip = (pageNum - 1) * limitNum;
-        const where = search ? {
-            OR: [
+        let where = {};
+        if (search) {
+            where.OR = [
                 { firstName: { contains: search, mode: 'insensitive' } },
                 { lastName: { contains: search, mode: 'insensitive' } },
                 { email: { contains: search, mode: 'insensitive' } },
                 { phoneE164: { contains: search } },
-            ],
-        } : {};
+            ];
+        }
+        if (status) {
+            if (status === 'frozen') {
+                where.isFrozen = true;
+            }
+            else if (status === 'active') {
+                where.isFrozen = false;
+            }
+            else if (status === 'kyc_pending') {
+                where.kycStatus = 'pending';
+            }
+            else if (status === 'kyc_approved') {
+                where.kycStatus = 'passed';
+            }
+        }
+        const orderBy = {};
+        if (sortBy) {
+            orderBy[sortBy] = sortOrder || 'desc';
+        }
+        else {
+            orderBy.createdAt = 'desc';
+        }
         const [users, total] = await Promise.all([
             this.prisma.user.findMany({
                 where,
@@ -84,8 +105,16 @@ let AdminController = class AdminController {
                     kycStatus: true,
                     isFrozen: true,
                     createdAt: true,
+                    balances: {
+                        select: {
+                            currency: true,
+                            available: true,
+                            trading: true,
+                            locked: true,
+                        },
+                    },
                 },
-                orderBy: { createdAt: 'desc' },
+                orderBy,
             }),
             this.prisma.user.count({ where }),
         ]);
@@ -118,6 +147,92 @@ let AdminController = class AdminController {
             throw new Error('User not found');
         }
         return user;
+    }
+    async freezeAccount(userId, body, req) {
+        const adminId = req.user.userId;
+        return this.prisma.$transaction(async (tx) => {
+            const user = await tx.user.update({
+                where: { id: userId },
+                data: { isFrozen: true },
+            });
+            await tx.adminAuditLog.create({
+                data: {
+                    adminId,
+                    actionType: 'freeze_account',
+                    targetType: 'user',
+                    targetId: userId,
+                    reason: body.reason,
+                    metadata: { userId, action: 'freeze' },
+                },
+            });
+            return user;
+        });
+    }
+    async unfreezeAccount(userId, body, req) {
+        const adminId = req.user.userId;
+        return this.prisma.$transaction(async (tx) => {
+            const user = await tx.user.update({
+                where: { id: userId },
+                data: { isFrozen: false },
+            });
+            await tx.adminAuditLog.create({
+                data: {
+                    adminId,
+                    actionType: 'unfreeze_account',
+                    targetType: 'user',
+                    targetId: userId,
+                    reason: body.reason,
+                    metadata: { userId, action: 'unfreeze' },
+                },
+            });
+            return user;
+        });
+    }
+    async resetPassword(userId, body, req) {
+        const adminId = req.user.userId;
+        const bcrypt = require('bcrypt');
+        return this.prisma.$transaction(async (tx) => {
+            const passwordHash = await bcrypt.hash(body.newPassword, 12);
+            await tx.user.update({
+                where: { id: userId },
+                data: { passwordHash },
+            });
+            await tx.adminAuditLog.create({
+                data: {
+                    adminId,
+                    actionType: 'reset_password',
+                    targetType: 'user',
+                    targetId: userId,
+                    reason: body.reason,
+                    metadata: { userId, action: 'password_reset' },
+                },
+            });
+            return { message: 'Password reset successfully' };
+        });
+    }
+    async impersonateUser(userId, body, req) {
+        const adminId = req.user.userId;
+        await this.prisma.adminAuditLog.create({
+            data: {
+                adminId,
+                actionType: 'impersonate_user',
+                targetType: 'user',
+                targetId: userId,
+                reason: body.reason,
+                metadata: {
+                    userId,
+                    adminId,
+                    action: 'impersonate',
+                    timestamp: new Date().toISOString()
+                },
+            },
+        });
+        const impersonationToken = `impersonate_${userId}_${Date.now()}`;
+        return {
+            impersonationToken,
+            message: 'Impersonation token generated. Use this to access user dashboard.',
+            userId
+        };
     }
     async adjustBalance(userId, dto, req) {
         const adminId = req.user.userId;
@@ -322,8 +437,11 @@ __decorate([
     __param(0, (0, common_1.Query)('search')),
     __param(1, (0, common_1.Query)('page')),
     __param(2, (0, common_1.Query)('limit')),
+    __param(3, (0, common_1.Query)('sortBy')),
+    __param(4, (0, common_1.Query)('sortOrder')),
+    __param(5, (0, common_1.Query)('status')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getUsers", null);
 __decorate([
@@ -333,6 +451,42 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getUser", null);
+__decorate([
+    (0, common_1.Post)('users/:id/freeze'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "freezeAccount", null);
+__decorate([
+    (0, common_1.Post)('users/:id/unfreeze'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "unfreezeAccount", null);
+__decorate([
+    (0, common_1.Post)('users/:id/reset-password'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "resetPassword", null);
+__decorate([
+    (0, common_1.Post)('users/:id/impersonate'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "impersonateUser", null);
 __decorate([
     (0, common_1.Post)('users/:id/adjust-balance'),
     __param(0, (0, common_1.Param)('id')),
@@ -379,7 +533,6 @@ __decorate([
 ], AdminController.prototype, "getAuditLog", null);
 exports.AdminController = AdminController = __decorate([
     (0, common_1.Controller)('admin'),
-    (0, common_1.UseGuards)((0, passport_1.AuthGuard)('jwt')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], AdminController);
 //# sourceMappingURL=admin.controller.js.map

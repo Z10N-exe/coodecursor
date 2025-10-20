@@ -50,7 +50,25 @@ export default function SignupPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.message || "Failed to register");
       }
-      router.push("/login");
+      // Auto-login after successful registration
+      const loginRes = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: phone, // Use phone as identifier
+          password: payload.password,
+        }),
+      });
+      
+      if (loginRes.ok) {
+        const loginData = await loginRes.json();
+        // Store tokens
+        localStorage.setItem('accessToken', loginData.accessToken);
+        localStorage.setItem('refreshToken', loginData.refreshToken);
+        router.push("/dashboard");
+      } else {
+        router.push("/login");
+      }
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {

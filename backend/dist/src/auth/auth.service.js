@@ -67,7 +67,7 @@ let AuthService = class AuthService {
                 isAdult: payload.isAdult,
             },
         });
-        return { message: 'Verification required' };
+        return { message: 'Account created successfully' };
     }
     async validateUser(identifier, password) {
         const user = await this.prisma.user.findFirst({

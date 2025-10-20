@@ -9,7 +9,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminModule = void 0;
 const common_1 = require("@nestjs/common");
 const admin_controller_1 = require("./admin.controller");
+const admin_auth_middleware_1 = require("./admin-auth.middleware");
 let AdminModule = class AdminModule {
+    configure(consumer) {
+        consumer
+            .apply(admin_auth_middleware_1.AdminAuthMiddleware)
+            .forRoutes('admin');
+    }
 };
 exports.AdminModule = AdminModule;
 exports.AdminModule = AdminModule = __decorate([

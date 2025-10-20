@@ -13,7 +13,13 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [statusFilter, setStatusFilter] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [showAdjustBalanceModal, setShowAdjustBalanceModal] = useState(false);
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("adminToken");
@@ -30,10 +36,23 @@ export default function AdminPage() {
     }
   }, [activeTab, router]);
 
+  const handleLogout = () => {
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminUser");
+    router.replace("/login");
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/users?search=${searchTerm}`, {
+      const params = new URLSearchParams({
+        search: searchTerm,
+        sortBy,
+        sortOrder,
+        ...(statusFilter && { status: statusFilter }),
+      });
+      
+      const res = await fetch(`${API_BASE}/admin/users?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
       });
       const data = await res.json();
@@ -119,6 +138,73 @@ export default function AdminPage() {
     }
   };
 
+  const handleFreezeAccount = async (userId: string, reason: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/freeze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+        body: JSON.stringify({ reason }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to freeze account');
+      alert('Account frozen successfully');
+      fetchUsers();
+    } catch (error) {
+      alert('Failed to freeze account: ' + (error as Error).message);
+    }
+  };
+
+  const handleUnfreezeAccount = async (userId: string, reason: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/unfreeze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+        body: JSON.stringify({ reason }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to unfreeze account');
+      alert('Account unfrozen successfully');
+      fetchUsers();
+    } catch (error) {
+      alert('Failed to unfreeze account: ' + (error as Error).message);
+    }
+  };
+
+  const handleImpersonateUser = async (userId: string, reason: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/impersonate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+        body: JSON.stringify({ reason }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to generate impersonation token');
+      
+      const data = await res.json();
+      
+      // Store impersonation token and redirect to frontend with special token
+      localStorage.setItem('impersonationToken', data.impersonationToken);
+      localStorage.setItem('impersonatedUserId', userId);
+      
+      // Open user dashboard in new tab
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
+      window.open(`${frontendUrl}/dashboard?impersonate=${data.impersonationToken}`, '_blank');
+      
+      alert('Impersonation session started. User dashboard opened in new tab.');
+    } catch (error) {
+      alert('Failed to start impersonation: ' + (error as Error).message);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -185,10 +271,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="text-sm opacity-80 hidden sm:block">Admin Dashboard</span>
             <button
-              onClick={() => {
-                localStorage.removeItem("adminToken");
-                setIsAuthenticated(false);
-              }}
+              onClick={handleLogout}
               className="btn-secondary rounded-lg px-3 py-2 text-sm font-medium"
             >
               Logout
@@ -238,6 +321,35 @@ export default function AdminPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="rounded-md bg-black/20 border border-white/20 px-3 py-2 text-sm"
                   />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="rounded-md bg-black/20 border border-white/20 px-3 py-2 text-sm"
+                  >
+                    <option value="">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="frozen">Frozen</option>
+                    <option value="kyc_pending">KYC Pending</option>
+                    <option value="kyc_approved">KYC Approved</option>
+                  </select>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="rounded-md bg-black/20 border border-white/20 px-3 py-2 text-sm"
+                  >
+                    <option value="createdAt">Created Date</option>
+                    <option value="firstName">First Name</option>
+                    <option value="lastName">Last Name</option>
+                    <option value="email">Email</option>
+                  </select>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                    className="rounded-md bg-black/20 border border-white/20 px-3 py-2 text-sm"
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
                   <button
                     onClick={fetchUsers}
                     className="btn-primary rounded-md px-4 py-2 font-semibold text-sm"
@@ -281,12 +393,43 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="py-2 sm:py-3 px-2">
-                            <button
-                              onClick={() => setSelectedUser(user)}
-                              className="text-[var(--accent)] hover:underline text-xs sm:text-sm"
-                            >
-                              View
-                            </button>
+                            <div className="flex flex-wrap gap-1 sm:gap-2">
+                              <button
+                                onClick={() => setSelectedUser(user)}
+                                className="text-[var(--accent)] hover:underline text-xs"
+                              >
+                                View
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Reason for freezing account:');
+                                  if (reason) handleFreezeAccount(user.id, reason);
+                                }}
+                                className="text-red-400 hover:underline text-xs"
+                                disabled={user.isFrozen}
+                              >
+                                {user.isFrozen ? 'Frozen' : 'Freeze'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Reason for unfreezing account:');
+                                  if (reason) handleUnfreezeAccount(user.id, reason);
+                                }}
+                                className="text-green-400 hover:underline text-xs"
+                                disabled={!user.isFrozen}
+                              >
+                                Unfreeze
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Reason for impersonation:');
+                                  if (reason) handleImpersonateUser(user.id, reason);
+                                }}
+                                className="text-blue-400 hover:underline text-xs"
+                              >
+                                Login As
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

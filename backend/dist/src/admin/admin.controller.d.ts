@@ -13,7 +13,7 @@ declare class ApproveWithdrawalDto {
 export declare class AdminController {
     private prisma;
     constructor(prisma: PrismaService);
-    getUsers(search?: string, page?: string, limit?: string): Promise<{
+    getUsers(search?: string, page?: string, limit?: string, sortBy?: string, sortOrder?: 'asc' | 'desc', status?: string): Promise<{
         users: {
             id: string;
             email: string | null;
@@ -24,6 +24,12 @@ export declare class AdminController {
             countryCode: string;
             kycStatus: string;
             isFrozen: boolean;
+            balances: {
+                currency: string;
+                available: Prisma.Decimal;
+                trading: Prisma.Decimal;
+                locked: Prisma.Decimal;
+            }[];
         }[];
         pagination: {
             page: number;
@@ -46,9 +52,9 @@ export declare class AdminController {
             createdAt: Date;
             userId: string;
             currency: string;
-            type: string;
             amount: Prisma.Decimal;
             status: string;
+            type: string;
             reference: string | null;
             createdByAdminId: string | null;
             metadata: Prisma.JsonValue;
@@ -58,10 +64,10 @@ export declare class AdminController {
             createdAt: Date;
             userId: string;
             currency: string;
-            amount: Prisma.Decimal;
             method: string;
-            status: string;
+            amount: Prisma.Decimal;
             details: Prisma.JsonValue;
+            status: string;
             adminId: string | null;
             adminNote: string | null;
             processedAt: Date | null;
@@ -82,6 +88,55 @@ export declare class AdminController {
         isFrozen: boolean;
         updatedAt: Date;
     }>;
+    freezeAccount(userId: string, body: {
+        reason: string;
+    }, req: any): Promise<{
+        id: string;
+        email: string | null;
+        passwordHash: string;
+        createdAt: Date;
+        phoneE164: string | null;
+        firstName: string;
+        lastName: string;
+        countryCode: string;
+        isEmailVerified: boolean;
+        isPhoneVerified: boolean;
+        isAdult: boolean;
+        kycStatus: string;
+        isFrozen: boolean;
+        updatedAt: Date;
+    }>;
+    unfreezeAccount(userId: string, body: {
+        reason: string;
+    }, req: any): Promise<{
+        id: string;
+        email: string | null;
+        passwordHash: string;
+        createdAt: Date;
+        phoneE164: string | null;
+        firstName: string;
+        lastName: string;
+        countryCode: string;
+        isEmailVerified: boolean;
+        isPhoneVerified: boolean;
+        isAdult: boolean;
+        kycStatus: string;
+        isFrozen: boolean;
+        updatedAt: Date;
+    }>;
+    resetPassword(userId: string, body: {
+        newPassword: string;
+        reason: string;
+    }, req: any): Promise<{
+        message: string;
+    }>;
+    impersonateUser(userId: string, body: {
+        reason: string;
+    }, req: any): Promise<{
+        impersonationToken: string;
+        message: string;
+        userId: string;
+    }>;
     adjustBalance(userId: string, dto: AdjustBalanceDto, req: any): Promise<{
         balance: {
             id: string;
@@ -96,9 +151,9 @@ export declare class AdminController {
             createdAt: Date;
             userId: string;
             currency: string;
-            type: string;
             amount: Prisma.Decimal;
             status: string;
+            type: string;
             reference: string | null;
             createdByAdminId: string | null;
             metadata: Prisma.JsonValue;
@@ -117,10 +172,10 @@ export declare class AdminController {
             createdAt: Date;
             userId: string;
             currency: string;
-            amount: Prisma.Decimal;
             method: string;
-            status: string;
+            amount: Prisma.Decimal;
             details: Prisma.JsonValue;
+            status: string;
             adminId: string | null;
             adminNote: string | null;
             processedAt: Date | null;
@@ -137,10 +192,10 @@ export declare class AdminController {
         createdAt: Date;
         userId: string;
         currency: string;
-        amount: Prisma.Decimal;
         method: string;
-        status: string;
+        amount: Prisma.Decimal;
         details: Prisma.JsonValue;
+        status: string;
         adminId: string | null;
         adminNote: string | null;
         processedAt: Date | null;
@@ -150,10 +205,10 @@ export declare class AdminController {
         createdAt: Date;
         userId: string;
         currency: string;
-        amount: Prisma.Decimal;
         method: string;
-        status: string;
+        amount: Prisma.Decimal;
         details: Prisma.JsonValue;
+        status: string;
         adminId: string | null;
         adminNote: string | null;
         processedAt: Date | null;
@@ -162,8 +217,8 @@ export declare class AdminController {
         logs: {
             id: string;
             createdAt: Date;
-            metadata: Prisma.JsonValue;
             adminId: string;
+            metadata: Prisma.JsonValue;
             reason: string;
             actionType: string;
             targetType: string;

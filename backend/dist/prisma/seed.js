@@ -37,43 +37,97 @@ const client_1 = require("@prisma/client");
 const bcrypt = __importStar(require("bcrypt"));
 const prisma = new client_1.PrismaClient();
 async function main() {
-    const adminEmail = 'admin@aspire.local';
-    const adminPass = await bcrypt.hash('AdminStrong!2025', 12);
-    await prisma.adminUser.upsert({
-        where: { email: adminEmail },
-        update: {},
-        create: {
-            name: 'Super Admin',
-            email: adminEmail,
-            role: 'SuperAdmin',
-            passwordHash: adminPass,
-            twoFaEnabled: false,
-        },
-    });
-    const userEmail = 'demo@aspire.local';
-    const userPass = await bcrypt.hash('UserStrong!2025', 12);
-    const user = await prisma.user.upsert({
-        where: { email: userEmail },
-        update: {},
-        create: {
-            firstName: 'Demo',
-            lastName: 'User',
-            email: userEmail,
-            phoneE164: '+15555550100',
-            countryCode: 'US',
-            passwordHash: userPass,
-            isAdult: true,
-            isEmailVerified: true,
-            isPhoneVerified: true,
-            kycStatus: 'passed',
-        },
-    });
-    await prisma.balance.upsert({
-        where: { userId_currency: { userId: user.id, currency: 'USD' } },
-        update: { available: new client_1.Prisma.Decimal('1500.00') },
-        create: { userId: user.id, currency: 'USD', available: new client_1.Prisma.Decimal('1500.00'), trading: new client_1.Prisma.Decimal('0'), locked: new client_1.Prisma.Decimal('0') },
-    });
-    console.log('Seed complete. Admin:', adminEmail, 'User:', userEmail);
+    console.log('🌱 Starting database seed...');
+    try {
+        const adminEmail = 'admin@aspiresecuretrade.com';
+        const adminPass = await bcrypt.hash('AdminStrong!2025', 12);
+        const admin = await prisma.adminUser.upsert({
+            where: { email: adminEmail },
+            update: {},
+            create: {
+                name: 'Super Admin',
+                email: adminEmail,
+                role: 'SuperAdmin',
+                passwordHash: adminPass,
+                twoFaEnabled: false,
+                isActive: true,
+            },
+        });
+        console.log('✅ Admin user created:', admin.email);
+        const userEmail = 'demo@aspiresecuretrade.com';
+        const userPass = await bcrypt.hash('UserStrong!2025', 12);
+        const user = await prisma.user.upsert({
+            where: { email: userEmail },
+            update: {},
+            create: {
+                firstName: 'Demo',
+                lastName: 'User',
+                email: userEmail,
+                phoneE164: '+15555550100',
+                countryCode: 'US',
+                passwordHash: userPass,
+                isAdult: true,
+                isEmailVerified: true,
+                isPhoneVerified: true,
+                kycStatus: 'passed',
+                isFrozen: false,
+            },
+        });
+        console.log('✅ Demo user created:', user.email);
+        await prisma.balance.upsert({
+            where: { userId_currency: { userId: user.id, currency: 'USD' } },
+            update: { available: new client_1.Prisma.Decimal('1500.00') },
+            create: {
+                userId: user.id,
+                currency: 'USD',
+                available: new client_1.Prisma.Decimal('1500.00'),
+                trading: new client_1.Prisma.Decimal('0'),
+                locked: new client_1.Prisma.Decimal('0')
+            },
+        });
+        console.log('✅ User balance created');
+        await prisma.transaction.createMany({
+            data: [
+                {
+                    userId: user.id,
+                    type: 'deposit',
+                    amount: new client_1.Prisma.Decimal('1000.00'),
+                    currency: 'USD',
+                    status: 'completed',
+                    reference: 'DEP-001',
+                    metadata: { method: 'bank_transfer', description: 'Initial deposit' },
+                },
+                {
+                    userId: user.id,
+                    type: 'profit',
+                    amount: new client_1.Prisma.Decimal('500.00'),
+                    currency: 'USD',
+                    status: 'completed',
+                    reference: 'PROF-001',
+                    metadata: { description: 'Trading profit', period: 'Q1 2024' },
+                },
+            ],
+        });
+        console.log('✅ Sample transactions created');
+        await prisma.withdrawalRequest.create({
+            data: {
+                userId: user.id,
+                amount: new client_1.Prisma.Decimal('200.00'),
+                currency: 'USD',
+                method: 'bank_transfer',
+                details: { accountNumber: '1234567890', bankName: 'Demo Bank' },
+                status: 'requested',
+            },
+        });
+        console.log('✅ Sample withdrawal request created');
+        console.log('🎉 Seed complete successfully!');
+        console.log('📧 Admin:', adminEmail, '(Password: AdminStrong!2025)');
+        console.log('👤 User:', userEmail, '(Password: UserStrong!2025)');
+    }
+    catch (error) {
+        console.error('❌ Seed failed:', error);
+        throw error;
+    }
 }
 main()
     .catch((e) => {
